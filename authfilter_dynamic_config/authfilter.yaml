@@ -1,0 +1,59 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: authfilter
+  namespace: istio-system
+spec:
+  configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: ANY
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+              subFilter:
+                name: envoy.filters.http.router
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: authfilter-ext
+          config_discovery:
+            config_source:
+              ads: {}
+              initial_fetch_timeout: 0s
+            type_urls: [ "type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm"]
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: authfilter-ext
+  namespace: istio-system
+spec:
+  configPatches:
+  - applyTo: EXTENSION_CONFIG
+    match:
+      context: ANY
+    patch:
+      operation: ADD
+      value:
+        name: authfilter-ext
+        typed_config:
+          '@type': type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
+          value:
+            config:
+              configuration:
+                '@type': type.googleapis.com/google.protobuf.StringValue
+                value: |
+                  {
+                    "valid_keys": ["ok"]
+                  }
+              vm_config:
+                code:
+                  remote:
+                    http_uri:
+                      uri: http://192.168.112.10:8080/authfilter.wasm
+                    sha256: 492237494a2e2de8cfa44be404a3c96153bd081c5c87430b30881d454679aca4
+                runtime: envoy.wasm.runtime.v8
+
